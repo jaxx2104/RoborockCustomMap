@@ -68,6 +68,35 @@ def _rotate_point_map_xy(
     return (x, y)
 
 
+def _point_attributes(prefix: str, point) -> dict:
+    """Flat x/y of a point in vacuum coordinates (None when unknown)."""
+    if point is None:
+        return {f"{prefix}_x": None, f"{prefix}_y": None}
+    return {f"{prefix}_x": round(point.x), f"{prefix}_y": round(point.y)}
+
+
+def _path_attribute(path) -> list[list[list[int]]] | None:
+    """Path as [[[x, y], ...], ...] in vacuum coordinates, one list per segment."""
+    if path is None:
+        return None
+    return [[[round(p.x), round(p.y)] for p in segment] for segment in path.path]
+
+
+def _robot_attributes(map_data) -> dict:
+    """Vacuum position, charger position and the cleaning path in vacuum coordinates.
+
+    Flat names so a card can read them as plain attributes; map them onto the
+    image with calibration_points.
+    """
+    vacuum = map_data.vacuum_position
+    return {
+        **_point_attributes("vacuum", vacuum),
+        "vacuum_angle": vacuum.a if vacuum is not None else None,
+        **_point_attributes("charger", map_data.charger),
+        "path": _path_attribute(map_data.path),
+    }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -93,6 +122,8 @@ class RoborockMap(RoborockCoordinatedEntityV1, ImageEntity):
     """A class to let you visualize the map."""
 
     _attr_has_entity_name = True
+    # A whole cleaning run is thousands of points: keep it out of the recorder.
+    _unrecorded_attributes = frozenset({"path"})
     image_last_updated: datetime
     _attr_name: str
 
@@ -277,4 +308,5 @@ class RoborockMap(RoborockCoordinatedEntityV1, ImageEntity):
             "calibration_points": calibration,
             "rooms": map_data.rooms,
             "zones": map_data.zones,
+            **_robot_attributes(map_data),
         }
